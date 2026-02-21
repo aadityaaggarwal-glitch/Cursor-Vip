@@ -82,108 +82,69 @@ detect_os() {
     fi
 }
 
-# Install and download
 install_cursor_free_vip() {
-    local downloads_dir=$(get_downloads_dir)
-    local binary_name="CursorFreeVIP_${VERSION}_${OS}"
-    local binary_path="${downloads_dir}/${binary_name}"
-    local download_url="https://github.com/aadityaaggarwal-glitch/Cursor-Vip/releases/download/${VERSION}/${binary_name}"
-    
-    # Check if file already exists
-    if [ -f "${binary_path}" ]; then
-        echo -e "${GREEN}✅ Found existing installation file${NC}"
-        echo -e "${CYAN}ℹ️ Location: ${binary_path}${NC}"
-        
-        # Check if running as root
-        if [ "$EUID" -ne 0 ]; then
-            echo -e "${YELLOW}⚠️ Requesting administrator privileges...${NC}"
-            if command -v sudo >/dev/null 2>&1; then
-                echo -e "${CYAN}ℹ️ Starting program with sudo...${NC}"
-                sudo chmod +x "${binary_path}"
-                sudo "${binary_path}"
-            else
-                echo -e "${YELLOW}⚠️ sudo not found, trying to run normally...${NC}"
-                chmod +x "${binary_path}"
-                "${binary_path}"
-            fi
-        else
-            # Already running as root
-            echo -e "${CYAN}ℹ️ Already running as root, starting program...${NC}"
-            chmod +x "${binary_path}"
-            "${binary_path}"
-        fi
+    local downloads_dir
+    downloads_dir=$(get_downloads_dir)
+
+    local archive_name="Cursor-Vip-${VERSION}.tar.gz"
+    local archive_path="${downloads_dir}/${archive_name}"
+
+    local download_url="https://github.com/aadityaaggarwal-glitch/Cursor-Vip/archive/refs/tags/${VERSION}.tar.gz"
+
+    echo -e "${CYAN}ℹ️ Downloading source code...${NC}"
+    echo -e "${CYAN}ℹ️ ${download_url}${NC}"
+
+    if ! curl -L -o "${archive_path}" "${download_url}"; then
+        echo -e "${RED}❌ Failed to download source archive${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✅ Source archive downloaded${NC}"
+
+    cd "${downloads_dir}" || exit 1
+    tar -xzf "${archive_name}"
+
+    local project_dir="Cursor-Vip-${VERSION}"
+    cd "${project_dir}" || {
+        echo -e "${RED}❌ Failed to enter project directory${NC}"
+        exit 1
+    }
+
+    echo -e "${GREEN}✅ Source extracted to ${PWD}${NC}"
+
+    # -------------------------------
+    # AUTO-DETECT HOW TO RUN PROJECT
+    # -------------------------------
+
+    if [ -f "package.json" ]; then
+        echo -e "${CYAN}ℹ️ Detected Node.js project${NC}"
+        command -v npm >/dev/null 2>&1 || {
+            echo -e "${RED}❌ npm is required but not installed${NC}"
+            exit 1
+        }
+        npm install
+        npm start
         return
     fi
-    
-    echo -e "${CYAN}ℹ️ No existing installation file found, starting download...${NC}"
-    echo -e "${CYAN}ℹ️ Downloading to ${downloads_dir}...${NC}"
-    echo -e "${CYAN}ℹ️ Download link: ${download_url}${NC}"
-    
-    # Check if file exists
-    if curl --output /dev/null --silent --head --fail "$download_url"; then
-        echo -e "${GREEN}✅ File exists, starting download...${NC}"
-    else
-        echo -e "${RED}❌ Download link does not exist: ${download_url}${NC}"
-        echo -e "${YELLOW}⚠️ Trying without architecture...${NC}"
-        
-        # Try without architecture
-        if [[ "$OS" == "mac_arm64" || "$OS" == "mac_intel" ]]; then
-            OS="mac"
-            binary_name="CursorFreeVIP_${VERSION}_${OS}"
-            download_url="https://github.com/aadityaaggarwal-glitch/Cursor-Vip/releases/download/${VERSION}/${binary_name}"
-            echo -e "${CYAN}ℹ️ New download link: ${download_url}${NC}"
-            
-            if ! curl --output /dev/null --silent --head --fail "$download_url"; then
-                echo -e "${RED}❌ New download link does not exist${NC}"
-                exit 1
-            fi
-        elif [[ "$OS" == "linux_x64" || "$OS" == "linux_arm64" ]]; then
-            OS="linux"
-            binary_name="CursorFreeVIP_${VERSION}_${OS}"
-            download_url="https://github.com/yeongpin/cursor-free-vip/releases/download/v${VERSION}/${binary_name}"
-            echo -e "${CYAN}ℹ️ New download link: ${download_url}${NC}"
-            
-            if ! curl --output /dev/null --silent --head --fail "$download_url"; then
-                echo -e "${RED}❌ New download link does not exist${NC}"
-                exit 1
-            fi
-        else
-            exit 1
-        fi
+
+    if [ -f "requirements.txt" ]; then
+        echo -e "${CYAN}ℹ️ Detected Python project${NC}"
+        python3 -m venv venv
+        source venv/bin/activate
+        pip install -r requirements.txt
+        python main.py
+        return
     fi
-    
-    # Download file
-    if ! curl -L -o "${binary_path}" "$download_url"; then
-        echo -e "${RED}❌ Download failed${NC}"
-        exit 1
+
+    if [ -f "main.sh" ]; then
+        echo -e "${CYAN}ℹ️ Detected shell script entry point${NC}"
+        chmod +x main.sh
+        ./main.sh
+        return
     fi
-    
-    # Check downloaded file size
-    local file_size=$(stat -f%z "${binary_path}" 2>/dev/null || stat -c%s "${binary_path}" 2>/dev/null)
-    echo -e "${CYAN}ℹ️ Downloaded file size: ${file_size} bytes${NC}"
-    
-    # If file is too small, it might be an error message
-    if [ "$file_size" -lt 1000 ]; then
-        echo -e "${YELLOW}⚠️ Warning: Downloaded file is too small, possibly not a valid executable file${NC}"
-        echo -e "${YELLOW}⚠️ File content:${NC}"
-        cat "${binary_path}"
-        echo ""
-        echo -e "${RED}❌ Download failed, please check version and operating system${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}ℹ️ Setting executable permissions...${NC}"
-    if chmod +x "${binary_path}"; then
-        echo -e "${GREEN}✅ Installation completed!${NC}"
-        echo -e "${CYAN}ℹ️ Program downloaded to: ${binary_path}${NC}"
-        echo -e "${CYAN}ℹ️ Starting program...${NC}"
-        
-        # Run program directly
-        "${binary_path}"
-    else
-        echo -e "${RED}❌ Installation failed${NC}"
-        exit 1
-    fi
+
+    echo -e "${YELLOW}⚠️ Project downloaded but no known entry point found${NC}"
+    echo -e "${YELLOW}⚠️ Please run it manually from:${NC} ${PWD}"
 }
 
 # Main program
